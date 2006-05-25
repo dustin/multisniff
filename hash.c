@@ -86,6 +86,7 @@ hash_store(struct hashtable *hash, pcap_t *pcap_thing, unsigned int key)
 
 	c->pcap_dumper = pcap_dump_open(pcap_thing, c->filename);
 	if(c->pcap_dumper == NULL) {
+		fprintf(stderr, "Error opening dump file %s\n", c->filename);
 		pcap_geterr(pcap_thing);
 		exit(1);
 	}
@@ -167,31 +168,28 @@ hash_find(struct hashtable *hash, unsigned int key)
 void
 hash_delete(struct hashtable *hash, unsigned int key)
 {
-	struct hash_container *p, *deleteme = NULL;
+	struct hash_container *deleteme = NULL;
 	int     hashval;
 
 	hashval = _do_hash(hash, key);
 
 	lock(hashval);
 
-	p = hash->buckets[hashval];
-
-	for (; p->next; p = p->next) {
-		if (p->key == key)
-			break;
-	}
-
-	if (!p->next) {
-		/* Stopped for a reason other than a match, rewind the bucket, and
-		 * check the first key */
-		p = hash->buckets[hashval];
-		if (p->key==key) {
-			deleteme = p;
-			hash->buckets[hashval] = p->next;
+	if(hash->buckets[hashval] != NULL) {
+		/* Special case the first one */
+		if(hash->buckets[hashval]->key == key) {
+			deleteme=hash->buckets[hashval];
+			hash->buckets[hashval]=deleteme->next;
+		} else {
+			struct hash_container *entry=NULL;
+			for(entry=hash->buckets[hashval];
+				deleteme == NULL && entry->next != NULL; entry=entry->next) {
+				if(key == entry->next->key) {
+					deleteme=entry->next;
+					entry->next=deleteme->next;
+				}
+			}
 		}
-	} else {
-		deleteme = p->next;
-		p->next = p->next->next;
 	}
 
 	if (deleteme) {
