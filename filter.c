@@ -317,12 +317,12 @@ filter_packet(u_char * u, struct pcap_pkthdr * p, u_char * packet)
 
 	unsigned short  ip_options = 0;
 	struct ip      *ip;
-	/* this is used to store the output line */
-	char            out_buf[8192];
 
 	/* p->len should never be smaller than the smallest possible packet */
-	if (p->len < (dlt_len + IP_SIZE + TCP_SIZE))
+	if (p->len < (dlt_len + IP_SIZE + TCP_SIZE)) {
+		fprintf(stderr, "! Skipping packet that's too small.\n");
 		return;
+	}
 
 	/* cast an ip pointer */
 	ip = (struct ip *) (packet + dlt_len);
@@ -334,13 +334,6 @@ filter_packet(u_char * u, struct pcap_pkthdr * p, u_char * packet)
 
 	/* nuke any flags in the offset field */
 	ip->ip_off &= 0xFF9F;
-
-	/* toss packets where the fragmentation offset is not 0 */
-	if (ip->ip_off != 0)
-		return;
-
-	/* Null the out_buf */
-	out_buf[0] = 0x00;
 
 	hash_add(hash, pcap_socket, ntohl(ip->ip_src.s_addr), p, packet);
 	hash_add(hash, pcap_socket, ntohl(ip->ip_dst.s_addr), p, packet);
