@@ -155,7 +155,6 @@ process(int flags, const char *intf, const char *outdir, char *filter)
 	struct bpf_program prog;
 	bpf_u_int32     netmask=0;
 	int             flagdef;
-	char			*use_pthread="no";
 #ifdef USE_PTHREAD
 	pthread_t		sp;
 #endif
@@ -204,7 +203,6 @@ process(int flags, const char *intf, const char *outdir, char *filter)
 	hash=hash_init(637);
 
 #ifdef USE_PTHREAD
-	use_pthread="yes";
 	/* OK, create the status printer thread */
 	if(pthread_mutex_init(&threadmutex, NULL) < 0) {
 		perror("pthread_mutex_init");
@@ -220,11 +218,15 @@ process(int flags, const char *intf, const char *outdir, char *filter)
 	}
 #endif /* USE_PTHREAD */
 
-	fprintf(stderr,"interface: %s, filter: %s, promiscuous: %s, threads: %s\n",
-		intf,
-		filter,
-		(flags & FLAG_BIT(FLAG_PROMISC)) ? "yes" : "no",
-		use_pthread);
+	fprintf(stderr,
+		"interface: %s, filter: ``%s'', %spromiscuous, %sthreaded\n",
+		intf, filter, (flags & FLAG_BIT(FLAG_PROMISC)) ? "" : "NOT ",
+#ifdef USE_PTHREAD
+		""
+#else
+		"NOT "
+#endif
+		);
 	fflush(stderr);
 
 	if(chdir(outdir) < 0) {
@@ -300,7 +302,6 @@ showStats()
 			}
 		}
 	}
-	fflush(stdout);
 }
 
 /* this is the function that's called when pcap reads a packet */
