@@ -34,11 +34,13 @@ static pcap_t  *pcap_socket = NULL;
 static int      dlt_len = 0;
 static struct hashtable *hash=NULL;
 
-static int signalled=0;
+static int shouldCleanup=0;
+static int shuttingDown=0;
 
 static void     filter_packet(u_char *, struct pcap_pkthdr *, u_char *);
 static void     showStats();
-static void     signal_handler(int);
+static void     signalShutdown(int);
+static void     signalCleanup(int);
 static char    *itoa(int in);
 
 #ifdef USE_PTHREAD
@@ -52,35 +54,27 @@ static pthread_mutex_t threadmutex;
 #endif
 
 #ifdef USE_PTHREAD
+void threadSleep(int howLong) {
+	time_t now=time(NULL);
+	struct timespec ts;
+
+	ts.tv_nsec=0;
+	ts.tv_sec=now + howLong;
+
+	pthread_mutex_lock(&threadmutex);
+	pthread_cond_timedwait(&threadcond, &threadmutex, &ts);
+	pthread_mutex_unlock(&threadmutex);
+}
+
 void *statusPrinter(void *data)
 {
-	int oldstate=0;
-	for(;;) {
-		time_t now=time(NULL);
-		struct timespec ts;
+	while(!shuttingDown) {
 
-		ts.tv_nsec=0;
-		ts.tv_sec=now + PTHREAD_PRINT_INTERVAL;
-
-		pthread_testcancel();
-		pthread_mutex_lock(&threadmutex);
-		pthread_cond_timedwait(&threadcond, &threadmutex, &ts);
-		pthread_mutex_unlock(&threadmutex);
-		pthread_testcancel();
-
-		if(pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &oldstate) < 0) {
-			perror("pthread_setcancelstate(disable)");
-			exit(1);
-		}
-
-		showStats();
-
-		if(pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &oldstate) < 0) {
-			perror("pthread_setcancelstate(enable)");
-			exit(1);
+		threadSleep(PTHREAD_PRINT_INTERVAL);
+		if(!shuttingDown) {
+			showStats();
 		}
 	}
-	printf("! Status thread shutting down.\n");
 	return NULL;
 }
 #else
@@ -101,7 +95,6 @@ void nonThreadsStats()
 #ifdef USE_PTHREAD
 static void cleanup(pthread_t sp) {
 	printf("Waiting for status printer thread.\n");
-	pthread_cancel(sp);
 	pthread_mutex_lock(&threadmutex);
 	pthread_cond_signal(&threadcond);
 	pthread_mutex_unlock(&threadmutex);
@@ -116,12 +109,12 @@ static void cleanup() {
 #ifdef MYMALLOC
 	_mdebug_dump();
 #endif /* MYMALLOC */
-	exit(signalled);
+	exit(0);
 }
 
 static void setupSignals() {
 	sigset_t sigBlockSet;
-	struct sigaction sa;
+	struct sigaction saShutdown, saCleanup;
 
 	sigemptyset(&sigBlockSet);
 	sigaddset(&sigBlockSet, SIGHUP);
@@ -130,20 +123,25 @@ static void setupSignals() {
 		exit(1);
 	}
 
-	sa.sa_handler=signal_handler;
-	sa.sa_flags=0;
-	sigemptyset(&sa.sa_mask);
+	saShutdown.sa_handler=signalShutdown;
+	saShutdown.sa_flags=0;
+	sigemptyset(&saShutdown.sa_mask);
 
-	if(sigaction(SIGINT, &sa, NULL) < 0) {
+	if(sigaction(SIGINT, &saShutdown, NULL) < 0) {
 		perror("sigaction(INT)");
 		exit(1);
 	}
-	if(sigaction(SIGQUIT, &sa, NULL) < 0) {
-		perror("sigaction(QUIT)");
+	if(sigaction(SIGTERM, &saShutdown, NULL) < 0) {
+		perror("sigaction(TERM)");
 		exit(1);
 	}
-	if(sigaction(SIGTERM, &sa, NULL) < 0) {
-		perror("sigaction(TERM)");
+
+	saCleanup.sa_handler=signalCleanup;
+	saCleanup.sa_flags=0;
+	sigemptyset(&saShutdown.sa_mask);
+
+	if(sigaction(SIGQUIT, &saCleanup, NULL) < 0) {
+		perror("sigaction(QUIT)");
 		exit(1);
 	}
 }
@@ -185,7 +183,7 @@ process(int flags, const char *intf, const char *outdir, char *filter)
 		break;
 	case DLT_FDDI:
 		fprintf(stderr, "Sorry, can't do FDDI\n");
-		signal_handler(-1);
+		exit(1);
 		break;
 	default:
 		dlt_len = 4;
@@ -193,11 +191,11 @@ process(int flags, const char *intf, const char *outdir, char *filter)
 
 	if (pcap_compile(pcap_socket, &prog, filter, 1, netmask) < 0) {
 		fprintf(stderr, "pcap_compile: %s\n", errbuf);
-		signal_handler(-1);
+		exit(1);
 	}
 	if (pcap_setfilter(pcap_socket, &prog) < 0) {
 		fprintf(stderr, "pcap_setfilter: %s\n", errbuf);
-		signal_handler(-1);
+		exit(1);
 	}
 
 	hash=hash_init(637);
@@ -234,8 +232,14 @@ process(int flags, const char *intf, const char *outdir, char *filter)
 		exit(1);
 	}
 
-	while (signalled==0) {
+	while (!shuttingDown) {
 		pcap_loop(pcap_socket, 100, (pcap_handler) filter_packet, NULL);
+		if(shouldCleanup) {
+			printf("# Cleaning up open pcap files\n");
+			hash_destroy(hash);
+			hash=hash_init(637);
+			shouldCleanup=0;
+		}
 #ifdef USE_PTHREAD
 		/* This is for bad pthread implementations */
 		usleep(1);
@@ -388,8 +392,15 @@ ntoa(int a)
 
 /* shut down in a controlled way, close log file, close socket, and exit */
 static void
-signal_handler(int s)
+signalShutdown(int s)
 {
-	signalled=s;
+	shuttingDown=1;
+	pcap_breakloop(pcap_socket);
+}
+
+static void
+signalCleanup(int s)
+{
+	shouldCleanup=1;
 	pcap_breakloop(pcap_socket);
 }
