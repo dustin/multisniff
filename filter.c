@@ -233,7 +233,7 @@ process(int flags, const char *intf, const char *outdir, char *filter)
 	}
 
 	while (!shuttingDown) {
-		pcap_loop(pcap_socket, 100, (pcap_handler) filter_packet, NULL);
+		pcap_loop(pcap_socket, 65535, (pcap_handler)filter_packet, NULL);
 		if(shouldCleanup) {
 			printf("# Cleaning up open pcap files\n");
 			hash_destroy(hash);
