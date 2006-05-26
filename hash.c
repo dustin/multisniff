@@ -211,6 +211,9 @@ hash_destroy(struct hashtable *hash)
 		free(hash->buckets);
 	}
 #ifdef USE_PTHREAD
+	for(i=0; i<hash->hashsize; i++) {
+		pthread_mutex_destroy(&hash->mutexen[i]);
+	}
 	free(hash->mutexen);
 #endif
 	free(hash);
