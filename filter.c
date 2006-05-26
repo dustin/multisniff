@@ -1,6 +1,26 @@
 /*
  * Copyright (c) 2006  dustin sallings
  * arch-tag: 4231F4E0-7F91-4370-B88B-03D9C794050A
+ *
+ * This piece of code has two threads that operate almost entirely
+ * independently:
+ *
+ * 1)	The main thread -- responsible for processing packet data
+ * 2)	The cleanup thread -- responsible for cleaning up old entries, flushing
+ * 		logs, and printing stats.
+ *
+ * The synchronization points are small, but are described below.
+ *
+ * There is a coarse mutex that covers some of the basic operation of the
+ * cleanup thread.  This is locked whenever we are sleeping so we can interrupt
+ * the sleep for a quick shutdown.  It's also locked for every cleanup run so
+ * the main thread can perform a major cleanup on a signal handler (involving
+ * replacing the hash table altogether).
+ *
+ * The hashtable has fairly fine-grained locking.  Every hash bucket has a
+ * mutex which is locked before any operation occurs in that bucket.  This
+ * allows for concurrent modification of a hashtable as long as the
+ * modifications are occurring in different buckets.
  */
 
 #include <stdio.h>
@@ -74,7 +94,9 @@ static void *statusThread(void *data)
 
 		threadSleep(conf->refreshTime);
 		if(!shuttingDown) {
+			pthread_mutex_lock(&threadmutex);
 			cleanup(conf->maxAge);
+			pthread_mutex_unlock(&threadmutex);
 		}
 	}
 	return NULL;
@@ -239,8 +261,10 @@ process(int flags, const char *intf, struct cleanupConfig conf,
 		pcap_loop(pcap_socket, 65535, (pcap_handler)filter_packet, NULL);
 		if(shouldCleanup) {
 			printf("# Cleaning up open pcap files\n");
+			pthread_mutex_lock(&threadmutex);
 			hash_destroy(hash);
 			hash=hash_init(637);
+			pthread_mutex_unlock(&threadmutex);
 			shouldCleanup=0;
 		}
 #ifdef USE_PTHREAD
@@ -296,6 +320,7 @@ cleanup(int maxAge)
 				pcap_dump_flush(p->pcap_dumper);
 				if(p->last_addition.tv_sec + maxAge < now.tv_sec) {
 					toClose[closeOffset++]=p->key;
+					assert(closeOffset < sizeof(toClose));
 				}
 			}
 			unlock(i);
