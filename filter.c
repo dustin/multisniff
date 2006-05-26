@@ -38,7 +38,7 @@ static int shouldCleanup=0;
 static int shuttingDown=0;
 
 static void     filter_packet(u_char *, struct pcap_pkthdr *, u_char *);
-static void     showStats();
+static void     cleanup(int maxAge);
 static void     signalShutdown(int);
 static void     signalCleanup(int);
 static char    *itoa(int in);
@@ -66,34 +66,36 @@ void threadSleep(int howLong) {
 	pthread_mutex_unlock(&threadmutex);
 }
 
-void *statusPrinter(void *data)
+static void *statusThread(void *data)
 {
+	struct cleanupConfig* conf=(struct cleanupConfig*)data;
+
 	while(!shuttingDown) {
 
-		threadSleep(PTHREAD_PRINT_INTERVAL);
+		threadSleep(conf->refreshTime);
 		if(!shuttingDown) {
-			showStats();
+			cleanup(conf->maxAge);
 		}
 	}
 	return NULL;
 }
 #else
-void nonThreadsStats()
+void nonThreadsStats(struct cleanupConfig conf)
 {
 	static time_t last_time=0;
 	time_t t=0;
 
 	t=time(NULL);
 
-	if(t-last_time > NON_PTHREAD_PRINT_INTERVAL) {
+	if(t-last_time > conf.refreshTime) {
 		last_time=t;
-		showStats();
+		cleanup(conf.maxAge);
 	}
 }
 #endif /* USE_PTHREAD */
 
 #ifdef USE_PTHREAD
-static void cleanup(pthread_t sp) {
+static void exitCleanup(pthread_t sp) {
 	printf("Waiting for status printer thread.\n");
 	pthread_mutex_lock(&threadmutex);
 	pthread_cond_signal(&threadcond);
@@ -101,7 +103,7 @@ static void cleanup(pthread_t sp) {
 	pthread_join(sp, NULL);
 	printf("Joined status printer thread.\n");
 #else
-static void cleanup() {
+static void exitCleanup() {
 #endif
 
 	hash_destroy(hash);
@@ -147,7 +149,8 @@ static void setupSignals() {
 }
 
 void
-process(int flags, const char *intf, const char *outdir, char *filter)
+process(int flags, const char *intf, struct cleanupConfig conf,
+	const char *outdir, char *filter)
 {
 	char            errbuf[PCAP_ERRBUF_SIZE];
 	struct bpf_program prog;
@@ -210,7 +213,7 @@ process(int flags, const char *intf, const char *outdir, char *filter)
 		perror("pthread_cond_init");
 		exit(1);
 	}
-	if(pthread_create(&sp, NULL, statusPrinter, NULL) < 0) {
+	if(pthread_create(&sp, NULL, statusThread, &conf) < 0) {
 		perror("pthread_create");
 		exit(1);
 	}
@@ -244,19 +247,19 @@ process(int flags, const char *intf, const char *outdir, char *filter)
 		/* This is for bad pthread implementations */
 		usleep(1);
 #else
-		nonThreadsStats();
+		nonThreadsStats(conf);
 #endif /* USE_PTHREAD */
 	}
 
 #if USE_PTHREAD
-	cleanup(sp);
+	exitCleanup(sp);
 #else
-	cleanup();
+	exitCleanup();
 #endif
 }
 
 static void
-showStats()
+cleanup(int maxAge)
 {
 	static unsigned int last_pcount=0, last_dropcount=0;
 	struct pcap_stat stats;
@@ -291,7 +294,7 @@ showStats()
 			lock(i);
 			for(; p; p=p->next) {
 				pcap_dump_flush(p->pcap_dumper);
-				if(p->last_addition.tv_sec + MAX_PKT_AGE < now.tv_sec) {
+				if(p->last_addition.tv_sec + maxAge < now.tv_sec) {
 					toClose[closeOffset++]=p->key;
 				}
 			}

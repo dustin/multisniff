@@ -19,12 +19,14 @@ void
 usage(char *name)
 {
 	fprintf(stderr, "Usage:  %s -i <intf> [-p] [-d <outdir>] "
-		"[-F <filterfile>] [<filter>]\n",
+		"[-m seconds] [-c seconds] [-F <filterfile>] [<filter>]\n",
 		name);
 	fprintf(stderr, "    -i specifies the interface to sniff (required).\n");
 	fprintf(stderr, "    -d specifies the output directory.\n");
 	fprintf(stderr, "    -F get a filter from a file.\n");
 	fprintf(stderr, "    -p turns on promiscious sniffing.\n");
+	fprintf(stderr, "    -m maximum age before closing file [60s].\n");
+	fprintf(stderr, "    -c status update/flush frequency [5s].\n");
 	fprintf(stderr, "    <filter> pcap filter expression.\n");
 	exit(1);
 }
@@ -69,8 +71,12 @@ main(int argc, char **argv)
 	char           *filter = NULL;
 	char           *outdir = ".";
 	char           *intf = NULL;
+	struct cleanupConfig conf;
 
-	while ((c = getopt(argc, argv, "pi:d:F:")) != -1) {
+	conf.maxAge=DEFAULT_MAX_PKT_AGE;
+	conf.refreshTime=DEFAULT_CLEANUP_INTERVAL;
+
+	while ((c = getopt(argc, argv, "pi:d:F:m:c:")) != -1) {
 		switch (c) {
 		case 'p':
 			flags |= FLAG_BIT(FLAG_PROMISC);
@@ -83,6 +89,12 @@ main(int argc, char **argv)
 			break;
 		case 'i':
 			intf = strdup(optarg);
+			break;
+		case 'm':
+			conf.maxAge=atoi(optarg);
+			break;
+		case 'c':
+			conf.refreshTime=atoi(optarg);
 			break;
 		default:
 			usage(argv[0]);
@@ -119,6 +131,6 @@ main(int argc, char **argv)
 		fprintf(stderr, "Must supply an interface\n");
 		usage(argv[0]);
 	}
-	process(flags, intf, outdir, filter);
+	process(flags, intf, conf, outdir, filter);
 	return (0);
 }
