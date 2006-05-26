@@ -62,7 +62,7 @@ hash_init(int size)
 struct hash_container *
 hash_store(struct hashtable *hash, pcap_t *pcap_thing, unsigned int key)
 {
-	struct hash_container *c=NULL, *p=NULL;
+	struct hash_container *c=NULL;
 	int     hashval=0;
 	char time_buf[16];
 	time_t now=0;
@@ -95,21 +95,11 @@ hash_store(struct hashtable *hash, pcap_t *pcap_thing, unsigned int key)
 		exit(1);
 	}
 
-	c->next = NULL;
-
 	hashval = _do_hash(hash, key);
 
 	lock(hashval);
-
-	p = hash->buckets[hashval];
-
-	if (p) {
-		for (; p->next; p = p->next);
-		p->next = c;
-	} else {
-		hash->buckets[hashval] = c;
-	}
-
+	c->next=hash->buckets[hashval];
+	hash->buckets[hashval]=c;
 	unlock(hashval);
 
 	printf("# Created %s\n", c->filename);
@@ -142,8 +132,7 @@ hash_find(struct hashtable *hash, unsigned int key)
 	struct hash_container *p;
 	int     hashval;
 
-	if(hash==NULL)
-		return(NULL);
+	assert(hash != NULL);
 
 	hashval = _do_hash(hash, key);
 
@@ -174,7 +163,6 @@ hash_delete(struct hashtable *hash, unsigned int key)
 	hashval = _do_hash(hash, key);
 
 	lock(hashval);
-
 	if(hash->buckets[hashval] != NULL) {
 		/* Special case the first one */
 		if(hash->buckets[hashval]->key == key) {
@@ -191,6 +179,7 @@ hash_delete(struct hashtable *hash, unsigned int key)
 			}
 		}
 	}
+	unlock(hashval);
 
 	if (deleteme) {
 		pcap_dump_close(deleteme->pcap_dumper);
@@ -198,8 +187,6 @@ hash_delete(struct hashtable *hash, unsigned int key)
 		free(deleteme);
 		deleteme = NULL;
 	}
-
-	unlock(hashval);
 }
 
 /* Destroy a hash */
@@ -246,10 +233,8 @@ struct hash_keylist hash_keys(struct hashtable *hash)
     list.entries[list.nentries++]=a;
 
 	for (i = 0; i < hash->hashsize; i++) {
-		p = hash->buckets[i];
-
 		lock(i);
-
+		p = hash->buckets[i];
 		if (p) {
 			for (; p; p = p->next) {
 				LAPPEND(p->key);
@@ -270,10 +255,9 @@ _hash_dump(struct hashtable *hash)
 	printf("Hash dump for hash at %p, size is %d:\n", hash, hash->hashsize);
 
 	for (i = 0; i < hash->hashsize; i++) {
+		lock(i);
 		p = hash->buckets[i];
-
 		if (p) {
-			lock(i);
 			printf("\tMatches at %d\n", i);
 			for (; p; p = p->next) {
 #ifdef MYMALLOC
@@ -284,7 +268,7 @@ _hash_dump(struct hashtable *hash)
 #endif
 				printf("\t\t%s -> d=%p\n", ntoa(p->key), p->pcap_dumper);
 			}
-			unlock(i);
 		}
+		unlock(i);
 	}
 }
