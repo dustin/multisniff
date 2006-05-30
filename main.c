@@ -56,7 +56,7 @@ readFile(const char *filename)
 	}
 
 	/* Strip off the trailing whitespace */
-	while(isspace(rv[strlen(rv)-1])) {
+	while(strlen(rv) > 0 && isspace(rv[strlen(rv)-1])) {
 		rv[strlen(rv)-1]=0x00;
 	}
 	return rv;
