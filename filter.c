@@ -288,7 +288,7 @@ cleanup(int maxAge)
 	static unsigned int last_pcount=0, last_dropcount=0;
 	struct pcap_stat stats;
 	struct hash_container *p;
-	int i;
+	int i=0, watched=0, cleaned=0;
 	struct timeval now;
 
 	if(gettimeofday(&now, NULL) < 0) {
@@ -296,15 +296,6 @@ cleanup(int maxAge)
 		exit(1);
 	}
 
-	if (pcap_stats(pcap_socket, &stats) == 0) {
-		printf("# Processed %d packets, dropped %d\n",
-		       stats.ps_recv-last_pcount,
-			   stats.ps_drop-last_dropcount);
-		last_pcount=stats.ps_recv;
-		last_dropcount=stats.ps_drop;
-	} else {
-		printf("# Error getting pcap statistics.\n");
-	}
 	/* Look for anything old enough to get cleaned up */
 	for(i=0; i<hash->hashsize; i++) {
 		lock(i);
@@ -318,6 +309,7 @@ cleanup(int maxAge)
 			lock(i);
 			for(; p; p=p->next) {
 				pcap_dump_flush(p->pcap_dumper);
+				watched++;
 				if(p->last_addition.tv_sec + maxAge < now.tv_sec) {
 					toClose[closeOffset++]=p->key;
 					assert(closeOffset < sizeof(toClose));
@@ -331,8 +323,20 @@ cleanup(int maxAge)
 				printf("# Closing %s (too old)\n", p->filename);
 				p=NULL; /* Can't use this anymore */
 				hash_delete(hash, toClose[ci]);
+				cleaned++;
 			}
 		}
+	}
+
+	if (pcap_stats(pcap_socket, &stats) == 0) {
+		printf("# Processed %d packets, dropped %d, watched=%d, cleaned=%d\n",
+		       stats.ps_recv-last_pcount,
+			   stats.ps_drop-last_dropcount, watched, cleaned);
+		last_pcount=stats.ps_recv;
+		last_dropcount=stats.ps_drop;
+	} else {
+		printf("# Error getting pcap statistics.  watched=%d, cleaned=%d\n",
+			watched, cleaned);
 	}
 }
 
