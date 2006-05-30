@@ -32,7 +32,7 @@ struct hashtable {
 #ifdef USE_PTHREAD
 	pthread_mutex_t *mutexen;
 #endif /* USE_PTHREAD */
-	struct hash_container **buckets;
+	struct hash_container *buckets[0];
 };
 
 struct hashtable *hash_init(int size);

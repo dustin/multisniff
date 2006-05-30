@@ -38,13 +38,13 @@ hash_init(int size)
 	int i;
 #endif /* USE_PTHREAD */
 
-	hash = calloc(1, sizeof(struct hashtable));
+	assert(size > 0);
+
+	hash = calloc(1, sizeof(struct hashtable)
+		+ (size * sizeof(struct hash_container *)));
 	assert(hash);
 
 	hash->hashsize = size;
-
-	hash->buckets = calloc(hash->hashsize, sizeof(struct hash_container *));
-	assert(hash->buckets);
 
 #ifdef USE_PTHREAD
 	hash->mutexen = calloc(hash->hashsize, sizeof(pthread_mutex_t));
@@ -207,9 +207,6 @@ hash_destroy(struct hashtable *hash)
 
 	free(keys.entries);
 
-	if (hash->buckets) {
-		free(hash->buckets);
-	}
 #ifdef USE_PTHREAD
 	for(i=0; i<hash->hashsize; i++) {
 		pthread_mutex_destroy(&hash->mutexen[i]);
