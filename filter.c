@@ -121,7 +121,7 @@ process(int flags, const char *intf, struct cleanupConfig conf,
 		flagdef = 0;
 	}
 
-	pcap_socket = pcap_open_live(intf, 65535, flagdef, 10, errbuf);
+	pcap_socket = pcap_open_live(intf, 65535, flagdef, 1000, errbuf);
 
 	if (pcap_socket == NULL) {
 		fprintf(stderr, "pcap_open_live: %s\n", errbuf);
@@ -146,11 +146,11 @@ process(int flags, const char *intf, struct cleanupConfig conf,
 	}
 
 	if (pcap_compile(pcap_socket, &prog, filter, 1, netmask) < 0) {
-		fprintf(stderr, "pcap_compile: %s\n", errbuf);
+		fprintf(stderr, "pcap_compile: %s\n", pcap_geterr(pcap_socket));
 		exit(1);
 	}
 	if (pcap_setfilter(pcap_socket, &prog) < 0) {
-		fprintf(stderr, "pcap_setfilter: %s\n", errbuf);
+		fprintf(stderr, "pcap_setfilter: %s\n", pcap_geterr(pcap_socket));
 		exit(1);
 	}
 
@@ -231,8 +231,8 @@ cleanup(int maxAge)
 		last_pcount=stats.ps_recv;
 		last_dropcount=stats.ps_drop;
 	} else {
-		printf("# Error getting pcap statistics.  watched=%d, cleaned=%d\n",
-			watched, cleaned);
+		printf("# Error getting pcap statistics: %s.  watched=%d, cleaned=%d\n",
+			pcap_geterr(pcap_socket), watched, cleaned);
 	}
 }
 
