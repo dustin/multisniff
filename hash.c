@@ -60,8 +60,8 @@ hash_store(struct hashtable *hash, pcap_t *pcap_thing, unsigned int key)
 
 	c->pcap_dumper = pcap_dump_open(pcap_thing, c->filename);
 	if(c->pcap_dumper == NULL) {
-		fprintf(stderr, "Error opening dump file %s\n", c->filename);
-		pcap_geterr(pcap_thing);
+		fprintf(stderr, "Error opening dump file %s: %s\n", c->filename,
+			pcap_geterr(pcap_thing));
 		exit(1);
 	}
 	if(gettimeofday(&c->last_addition, NULL) < 0) {

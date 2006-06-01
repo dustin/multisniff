@@ -105,7 +105,7 @@ main(int argc, char **argv)
 
 	if (optind >= argc) {
 		if(filter == NULL) {
-			filter = "ip";
+			filter = "";
 		}
 	} else {
 		int i=0;

@@ -40,8 +40,13 @@ static void     signalShutdown(int);
 static void     signalCleanup(int);
 static void     signalExpunge(int);
 
+static pcap_dumper_t *misc_packets=NULL;
+
 static void exitCleanup() {
 	hash_destroy(hash);
+	if(misc_packets) {
+		pcap_dump_close(misc_packets);
+	}
 	pcap_close(pcap_socket);
 #ifdef MYMALLOC
 	_mdebug_dump();
@@ -102,6 +107,46 @@ setupSignals(int refreshTime)
 		perror("setitimer");
 		exit(1);
 	}
+}
+
+static void
+openMisc()
+{  
+	char misc_filename[FILENAME_MAXLEN];
+	time_t now=0;
+
+	now=time(NULL);
+	if(strftime(misc_filename, sizeof(misc_filename),
+		"%Y%m%d-%H%M%S_misc.pcap", localtime(&now)) >= sizeof(misc_filename)) {
+		fprintf(stderr,
+			"Warning: not enough space for full filename, using %s\n",
+			misc_filename);
+	}
+
+	assert(misc_packets == NULL);
+	misc_packets=pcap_dump_open(pcap_socket, misc_filename);
+
+	if(misc_packets == NULL) {
+		fprintf(stderr, "Error opening dump file %s: %s\n",
+			misc_filename, pcap_geterr(pcap_socket));
+		exit(1);
+	} else {
+		printf("+ Created %s\n", misc_filename);
+	}
+}
+
+static void
+expunge()
+{
+	printf("# Cleaning up open pcap files\n");
+	hash_destroy(hash);
+	hash=hash_init(HASH_SIZE);
+	if(misc_packets != NULL) {
+		printf("# Closing misc_packets\n");
+		pcap_dump_close(misc_packets);
+		misc_packets=NULL;
+	}
+	shouldExpunge=0;
 }
 
 void
@@ -169,10 +214,7 @@ process(int flags, const char *intf, struct cleanupConfig conf,
 	while (!shuttingDown) {
 		pcap_loop(pcap_socket, 65535, (pcap_handler)filter_packet, NULL);
 		if(shouldExpunge) {
-			printf("# Cleaning up open pcap files\n");
-			hash_destroy(hash);
-			hash=hash_init(HASH_SIZE);
-			shouldExpunge=0;
+			expunge();
 		}
 		if(shouldCleanup) {
 			cleanup(conf.maxAge);
@@ -228,6 +270,10 @@ cleanup(int maxAge)
 		}
 	}
 
+	if(misc_packets != NULL) {
+		pcap_dump_flush(misc_packets);
+	}
+
 	if (pcap_stats(pcap_socket, &stats) == 0) {
 		int processed=stats.ps_recv-last_pcount;
 		int dropped=stats.ps_drop-last_dropcount;
@@ -259,26 +305,40 @@ filter_packet(u_char * u, struct pcap_pkthdr * p, u_char * packet)
 
 	unsigned short  ip_options = 0;
 	struct ip      *ip;
+	struct ether_header *eth;
 
-	/* p->len should never be smaller than the smallest possible packet */
-	if (p->len < (dlt_len + IP_SIZE + TCP_SIZE)) {
-		fprintf(stderr, "! Skipping packet that's too small.\n");
-		return;
+	eth=(struct ether_header *)packet;
+
+	if(ntohs(eth->ether_type) == ETHERTYPE_IP) {
+		/* p->len should never be smaller than the smallest possible packet */
+		if (p->len < (dlt_len + IP_SIZE + TCP_SIZE)) {
+			fprintf(stderr, "! Skipping packet that's too small.\n");
+			return;
+		}
+
+		/* cast an ip pointer */
+		ip = (struct ip *) (packet + dlt_len);
+
+		/* determine length of ip options (usually 0) */
+		ip_options = ip->ip_hl;
+		ip_options -= 5;
+		ip_options *= 4;
+
+		/* nuke any flags in the offset field */
+		ip->ip_off &= 0xFF9F;
+
+		hash_add(hash, pcap_socket, ntohl(ip->ip_src.s_addr), p, packet);
+		hash_add(hash, pcap_socket, ntohl(ip->ip_dst.s_addr), p, packet);
+	} else {
+		/*
+		printf("! Non-IP packet received (ether type 0x%x)\n",
+			ntohs(eth->ether_type));
+		*/
+		if(misc_packets == NULL) {
+			openMisc();
+		}
+		pcap_dump((u_char *)misc_packets, p, packet);
 	}
-
-	/* cast an ip pointer */
-	ip = (struct ip *) (packet + dlt_len);
-
-	/* determine length of ip options (usually 0) */
-	ip_options = ip->ip_hl;
-	ip_options -= 5;
-	ip_options *= 4;
-
-	/* nuke any flags in the offset field */
-	ip->ip_off &= 0xFF9F;
-
-	hash_add(hash, pcap_socket, ntohl(ip->ip_src.s_addr), p, packet);
-	hash_add(hash, pcap_socket, ntohl(ip->ip_dst.s_addr), p, packet);
 }
 
 char *

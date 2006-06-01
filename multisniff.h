@@ -27,4 +27,15 @@ void process(int flags, const char *intf,
 	struct cleanupConfig conf, const char *outdir, char *filter);
 char *ntoa(int);
 
+/* This stuff was basically stolen from tcpdump */
+#define ETHER_ADDR_LEN 6
+struct ether_header {
+	u_int8_t    ether_dhost[ETHER_ADDR_LEN];
+	u_int8_t    ether_shost[ETHER_ADDR_LEN];
+	u_int16_t   ether_type;
+};
+
+/* We primarily care about IP.  Everything else goes into a common bucket */
+#define ETHERTYPE_IP 0x0800
+
 #endif /* MULTISNIFF_H */
