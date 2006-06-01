@@ -9,9 +9,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
-#ifdef USE_PTHREAD
-#include <pthread.h>
-#endif /* USE_PTHREAD */
 #include <pcap.h>
 
 struct hash_container {
@@ -29,9 +26,6 @@ struct hash_keylist {
 
 struct hashtable {
 	int     hashsize;
-#ifdef USE_PTHREAD
-	pthread_mutex_t *mutexen;
-#endif /* USE_PTHREAD */
 	struct hash_container *buckets[0];
 };
 

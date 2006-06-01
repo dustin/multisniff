@@ -16,6 +16,8 @@
 /* Maximum number of seconds we'll hold a pcap file open. */
 #define DEFAULT_MAX_PKT_AGE 60
 
+#define HASH_SIZE 637
+
 struct cleanupConfig {
 	int maxAge;
 	int refreshTime;

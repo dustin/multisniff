@@ -7,9 +7,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-#ifdef USE_PTHREAD
-#include <pthread.h>
-#endif /* USE_PTHREAD */
 
 #include "mymalloc.h"
 #include "multisniff.h"
@@ -17,26 +14,11 @@
 
 #define _do_hash(a, b) (b%a->hashsize)
 
-#ifdef USE_PTHREAD
-#define lock(a) { \
-	pthread_mutex_lock(&(hash->mutexen[a])); \
-}
-#define unlock(a) { \
-	pthread_mutex_unlock(&(hash->mutexen[a])); \
-}
-#else 
-#define lock(a)
-#define unlock(a)
-#endif /* USE_PTHREAD */
-
 /* Initialize a hash table */
 struct hashtable *
 hash_init(int size)
 {
 	struct hashtable *hash;
-#ifdef USE_PTHREAD
-	int i;
-#endif /* USE_PTHREAD */
 
 	assert(size > 0);
 
@@ -45,15 +27,6 @@ hash_init(int size)
 	assert(hash);
 
 	hash->hashsize = size;
-
-#ifdef USE_PTHREAD
-	hash->mutexen = calloc(hash->hashsize, sizeof(pthread_mutex_t));
-	assert(hash->mutexen);
-
-	for(i=0; i<hash->hashsize; i++) {
-		pthread_mutex_init(&(hash->mutexen[i]), NULL);
-	}
-#endif /* USE_PTHREAD */
 
 	return (hash);
 }
@@ -97,10 +70,8 @@ hash_store(struct hashtable *hash, pcap_t *pcap_thing, unsigned int key)
 
 	hashval = _do_hash(hash, key);
 
-	lock(hashval);
 	c->next=hash->buckets[hashval];
 	hash->buckets[hashval]=c;
-	unlock(hashval);
 
 	printf("# Created %s\n", c->filename);
 
@@ -117,10 +88,8 @@ struct hash_container *hash_add(struct hashtable *hash, pcap_t *pcap_thing,
 		c=hash_store(hash, pcap_thing, key);
 	}
 
-	lock(_do_hash(hash, key));
 	c->last_addition=h->ts;
 	pcap_dump((u_char *)c->pcap_dumper, h, sp);
-	unlock(_do_hash(hash, key));
 
 	return(c);
 }
@@ -139,16 +108,12 @@ hash_find(struct hashtable *hash, unsigned int key)
 	assert(hashval >= 0);
 	assert(hashval < hash->hashsize);
 
-	lock(hashval);
-
 	p = hash->buckets[hashval];
 
 	for (; p; p = p->next) {
 		if (p->key==key)
 			break;
 	}
-
-	unlock(hashval);
 
 	return (p);
 }
@@ -162,7 +127,6 @@ hash_delete(struct hashtable *hash, unsigned int key)
 
 	hashval = _do_hash(hash, key);
 
-	lock(hashval);
 	if(hash->buckets[hashval] != NULL) {
 		/* Special case the first one */
 		if(hash->buckets[hashval]->key == key) {
@@ -179,7 +143,6 @@ hash_delete(struct hashtable *hash, unsigned int key)
 			}
 		}
 	}
-	unlock(hashval);
 
 	if (deleteme) {
 		pcap_dump_close(deleteme->pcap_dumper);
@@ -207,12 +170,6 @@ hash_destroy(struct hashtable *hash)
 
 	free(keys.entries);
 
-#ifdef USE_PTHREAD
-	for(i=0; i<hash->hashsize; i++) {
-		pthread_mutex_destroy(&hash->mutexen[i]);
-	}
-	free(hash->mutexen);
-#endif
 	free(hash);
 }
 
@@ -233,14 +190,12 @@ struct hash_keylist hash_keys(struct hashtable *hash)
     list.entries[list.nentries++]=a;
 
 	for (i = 0; i < hash->hashsize; i++) {
-		lock(i);
 		p = hash->buckets[i];
 		if (p) {
 			for (; p; p = p->next) {
 				LAPPEND(p->key);
 			}
 		}
-		unlock(i);
 	}
 	return (list);
 }
@@ -255,7 +210,6 @@ _hash_dump(struct hashtable *hash)
 	printf("Hash dump for hash at %p, size is %d:\n", hash, hash->hashsize);
 
 	for (i = 0; i < hash->hashsize; i++) {
-		lock(i);
 		p = hash->buckets[i];
 		if (p) {
 			printf("\tMatches at %d\n", i);
@@ -269,6 +223,5 @@ _hash_dump(struct hashtable *hash)
 				printf("\t\t%s -> d=%p\n", ntoa(p->key), p->pcap_dumper);
 			}
 		}
-		unlock(i);
 	}
 }

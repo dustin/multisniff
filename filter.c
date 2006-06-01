@@ -1,26 +1,6 @@
 /*
  * Copyright (c) 2006  dustin sallings
  * arch-tag: 4231F4E0-7F91-4370-B88B-03D9C794050A
- *
- * This piece of code has two threads that operate almost entirely
- * independently:
- *
- * 1)	The main thread -- responsible for processing packet data
- * 2)	The cleanup thread -- responsible for cleaning up old entries, flushing
- * 		logs, and printing stats.
- *
- * The synchronization points are small, but are described below.
- *
- * There is a coarse mutex that covers some of the basic operation of the
- * cleanup thread.  This is locked whenever we are sleeping so we can interrupt
- * the sleep for a quick shutdown.  It's also locked for every cleanup run so
- * the main thread can perform a major cleanup on a signal handler (involving
- * replacing the hash table altogether).
- *
- * The hashtable has fairly fine-grained locking.  Every hash bucket has a
- * mutex which is locked before any operation occurs in that bucket.  This
- * allows for concurrent modification of a hashtable as long as the
- * modifications are occurring in different buckets.
  */
 
 #include <stdio.h>
@@ -42,10 +22,6 @@
 #include <string.h>
 #include <assert.h>
 
-#ifdef USE_PTHREAD
-#include <pthread.h>
-#endif /* USE_PTHREAD */
-
 #include "mymalloc.h"
 #include "multisniff.h"
 #include "hash.h"
@@ -54,6 +30,7 @@ static pcap_t  *pcap_socket = NULL;
 static int      dlt_len = 0;
 static struct hashtable *hash=NULL;
 
+static int shouldExpunge=0;
 static int shouldCleanup=0;
 static int shuttingDown=0;
 
@@ -61,73 +38,10 @@ static void     filter_packet(u_char *, struct pcap_pkthdr *, u_char *);
 static void     cleanup(int maxAge);
 static void     signalShutdown(int);
 static void     signalCleanup(int);
+static void     signalExpunge(int);
 static char    *itoa(int in);
 
-#ifdef USE_PTHREAD
-# define lock(a)   pthread_mutex_lock(&(hash->mutexen[a]))
-# define unlock(a) pthread_mutex_unlock(&(hash->mutexen[a]))
-static pthread_cond_t threadcond;
-static pthread_mutex_t threadmutex;
-#else
-# define lock(a)
-# define unlock(a)
-#endif
-
-#ifdef USE_PTHREAD
-void threadSleep(int howLong) {
-	time_t now=time(NULL);
-	struct timespec ts;
-
-	ts.tv_nsec=0;
-	ts.tv_sec=now + howLong;
-
-	pthread_mutex_lock(&threadmutex);
-	pthread_cond_timedwait(&threadcond, &threadmutex, &ts);
-	pthread_mutex_unlock(&threadmutex);
-}
-
-static void *statusThread(void *data)
-{
-	struct cleanupConfig* conf=(struct cleanupConfig*)data;
-
-	while(!shuttingDown) {
-
-		threadSleep(conf->refreshTime);
-		if(!shuttingDown) {
-			pthread_mutex_lock(&threadmutex);
-			cleanup(conf->maxAge);
-			pthread_mutex_unlock(&threadmutex);
-		}
-	}
-	return NULL;
-}
-#else
-void nonThreadsStats(struct cleanupConfig conf)
-{
-	static time_t last_time=0;
-	time_t t=0;
-
-	t=time(NULL);
-
-	if(t-last_time > conf.refreshTime) {
-		last_time=t;
-		cleanup(conf.maxAge);
-	}
-}
-#endif /* USE_PTHREAD */
-
-#ifdef USE_PTHREAD
-static void exitCleanup(pthread_t sp) {
-	printf("Waiting for status printer thread.\n");
-	pthread_mutex_lock(&threadmutex);
-	pthread_cond_signal(&threadcond);
-	pthread_mutex_unlock(&threadmutex);
-	pthread_join(sp, NULL);
-	printf("Joined status printer thread.\n");
-#else
 static void exitCleanup() {
-#endif
-
 	hash_destroy(hash);
 	pcap_close(pcap_socket);
 #ifdef MYMALLOC
@@ -136,9 +50,12 @@ static void exitCleanup() {
 	exit(0);
 }
 
-static void setupSignals() {
+static void
+setupSignals(int refreshTime)
+{
 	sigset_t sigBlockSet;
-	struct sigaction saShutdown, saCleanup;
+	struct sigaction saShutdown, saCleanup, saExpunge;
+	struct itimerval ival;
 
 	sigemptyset(&sigBlockSet);
 	sigaddset(&sigBlockSet, SIGHUP);
@@ -162,10 +79,28 @@ static void setupSignals() {
 
 	saCleanup.sa_handler=signalCleanup;
 	saCleanup.sa_flags=0;
-	sigemptyset(&saShutdown.sa_mask);
+	sigemptyset(&saCleanup.sa_mask);
 
-	if(sigaction(SIGQUIT, &saCleanup, NULL) < 0) {
+	if(sigaction(SIGALRM,&saCleanup, NULL) < 0) {
 		perror("sigaction(QUIT)");
+		exit(1);
+	}
+
+	saExpunge.sa_handler=signalExpunge;
+	saExpunge.sa_flags=0;
+	sigemptyset(&saExpunge.sa_mask);
+
+	if(sigaction(SIGQUIT, &saExpunge, NULL) < 0) {
+		perror("sigaction(QUIT)");
+		exit(1);
+	}
+
+	ival.it_interval.tv_usec=0;
+	ival.it_value.tv_usec=0;
+	ival.it_interval.tv_sec=refreshTime;
+	ival.it_value.tv_sec=refreshTime;
+	if(setitimer(ITIMER_REAL, &ival, NULL) < 0) {
+		perror("setitimer");
 		exit(1);
 	}
 }
@@ -178,11 +113,8 @@ process(int flags, const char *intf, struct cleanupConfig conf,
 	struct bpf_program prog;
 	bpf_u_int32     netmask=0;
 	int             flagdef;
-#ifdef USE_PTHREAD
-	pthread_t		sp;
-#endif
 
-	setupSignals();
+	setupSignals(conf.refreshTime);
 
 	if (flags & FLAG_BIT(FLAG_PROMISC))	{
 		flagdef = 1;
@@ -223,33 +155,11 @@ process(int flags, const char *intf, struct cleanupConfig conf,
 		exit(1);
 	}
 
-	hash=hash_init(637);
-
-#ifdef USE_PTHREAD
-	/* OK, create the status printer thread */
-	if(pthread_mutex_init(&threadmutex, NULL) < 0) {
-		perror("pthread_mutex_init");
-		exit(1);
-	}
-	if(pthread_cond_init(&threadcond, NULL) < 0) {
-		perror("pthread_cond_init");
-		exit(1);
-	}
-	if(pthread_create(&sp, NULL, statusThread, &conf) < 0) {
-		perror("pthread_create");
-		exit(1);
-	}
-#endif /* USE_PTHREAD */
+	hash=hash_init(HASH_SIZE);
 
 	fprintf(stderr,
-		"interface: %s, filter: ``%s'', %spromiscuous, %sthreaded\n",
-		intf, filter, (flags & FLAG_BIT(FLAG_PROMISC)) ? "" : "NOT ",
-#ifdef USE_PTHREAD
-		""
-#else
-		"NOT "
-#endif
-		);
+		"interface: %s, filter: ``%s'', %spromiscuous\n",
+		intf, filter, (flags & FLAG_BIT(FLAG_PROMISC)) ? "" : "NOT ");
 	fflush(stderr);
 
 	if(chdir(outdir) < 0) {
@@ -259,27 +169,18 @@ process(int flags, const char *intf, struct cleanupConfig conf,
 
 	while (!shuttingDown) {
 		pcap_loop(pcap_socket, 65535, (pcap_handler)filter_packet, NULL);
-		if(shouldCleanup) {
+		if(shouldExpunge) {
 			printf("# Cleaning up open pcap files\n");
-			pthread_mutex_lock(&threadmutex);
 			hash_destroy(hash);
-			hash=hash_init(637);
-			pthread_mutex_unlock(&threadmutex);
-			shouldCleanup=0;
+			hash=hash_init(HASH_SIZE);
+			shouldExpunge=0;
 		}
-#ifdef USE_PTHREAD
-		/* This is for bad pthread implementations */
-		usleep(1);
-#else
-		nonThreadsStats(conf);
-#endif /* USE_PTHREAD */
+		if(shouldCleanup) {
+			cleanup(conf.maxAge);
+		}
 	}
 
-#if USE_PTHREAD
-	exitCleanup(sp);
-#else
 	exitCleanup();
-#endif
 }
 
 static void
@@ -298,15 +199,12 @@ cleanup(int maxAge)
 
 	/* Look for anything old enough to get cleaned up */
 	for(i=0; i<hash->hashsize; i++) {
-		lock(i);
 		p=hash->buckets[i];
-		unlock(i);
 		if(p) {
 			int ci=0;
 			int toClose[1024];
 			int closeOffset=0;
 
-			lock(i);
 			for(; p; p=p->next) {
 				pcap_dump_flush(p->pcap_dumper);
 				watched++;
@@ -315,7 +213,6 @@ cleanup(int maxAge)
 					assert(closeOffset < sizeof(toClose));
 				}
 			}
-			unlock(i);
 
 			for(ci=0; ci<closeOffset; ci++) {
 				p=hash_find(hash, toClose[ci]);
@@ -420,6 +317,13 @@ static void
 signalShutdown(int s)
 {
 	shuttingDown=1;
+	pcap_breakloop(pcap_socket);
+}
+
+static void
+signalExpunge(int s)
+{
+	shouldExpunge=1;
 	pcap_breakloop(pcap_socket);
 }
 
