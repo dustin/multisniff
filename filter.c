@@ -185,7 +185,7 @@ process(int flags, const char *intf, struct cleanupConfig conf,
 static void
 cleanup(int maxAge)
 {
-	static unsigned int last_pcount=0, last_dropcount=0;
+	static unsigned int last_pcount=0, last_dropcount=0, relative_counts=0;
 	struct pcap_stat stats;
 	struct hash_container *p;
 	int i=0, watched=0, cleaned=0, maxDepth=0, empty=0;
@@ -229,10 +229,19 @@ cleanup(int maxAge)
 	}
 
 	if (pcap_stats(pcap_socket, &stats) == 0) {
+		int processed=stats.ps_recv-last_pcount;
+		int dropped=stats.ps_drop-last_dropcount;
+		if(relative_counts == 0 && (processed < 0 || dropped < 0)) {
+			printf("! pcap bug, counts went negative.  Compensating\n");
+			relative_counts=1;
+		}
+		if(relative_counts) {
+			processed=stats.ps_recv;
+			dropped=stats.ps_drop;
+		}
 		printf("# Processed %d pkts, dropped %d, watched %d, cleaned %d,"
 			" max depth %d, empty %d\n",
-		       stats.ps_recv-last_pcount,
-			   stats.ps_drop-last_dropcount, watched, cleaned, maxDepth, empty);
+		       processed, dropped, watched, cleaned, maxDepth, empty);
 		last_pcount=stats.ps_recv;
 		last_dropcount=stats.ps_drop;
 	} else {
