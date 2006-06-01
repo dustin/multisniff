@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <time.h>
 
 #include "mymalloc.h"
 #include "multisniff.h"
@@ -73,7 +74,7 @@ hash_store(struct hashtable *hash, pcap_t *pcap_thing, unsigned int key)
 	c->next=hash->buckets[hashval];
 	hash->buckets[hashval]=c;
 
-	printf("# Created %s\n", c->filename);
+	printf("+ Created %s\n", c->filename);
 
 	return (c);
 }
@@ -108,12 +109,8 @@ hash_find(struct hashtable *hash, unsigned int key)
 	assert(hashval >= 0);
 	assert(hashval < hash->hashsize);
 
-	p = hash->buckets[hashval];
-
-	for (; p; p = p->next) {
-		if (p->key==key)
-			break;
-	}
+	/* Find a container with the matching key, or null. */
+	for (p = hash->buckets[hashval]; p && p->key != key; p = p->next);
 
 	return (p);
 }

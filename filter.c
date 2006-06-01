@@ -188,7 +188,7 @@ cleanup(int maxAge)
 	static unsigned int last_pcount=0, last_dropcount=0;
 	struct pcap_stat stats;
 	struct hash_container *p;
-	int i=0, watched=0, cleaned=0;
+	int i=0, watched=0, cleaned=0, maxDepth=0, empty=0;
 	struct timeval now;
 
 	if(gettimeofday(&now, NULL) < 0) {
@@ -200,11 +200,13 @@ cleanup(int maxAge)
 	for(i=0; i<hash->hashsize; i++) {
 		p=hash->buckets[i];
 		if(p) {
-			int ci=0;
+			int ci=0, depth=0;
 			int toClose[1024];
 			int closeOffset=0;
 
 			for(; p; p=p->next) {
+				depth++;
+				maxDepth=depth > maxDepth ? depth : maxDepth;
 				pcap_dump_flush(p->pcap_dumper);
 				watched++;
 				if(p->last_addition.tv_sec + maxAge < now.tv_sec) {
@@ -216,18 +218,21 @@ cleanup(int maxAge)
 			for(ci=0; ci<closeOffset; ci++) {
 				p=hash_find(hash, toClose[ci]);
 				assert(p != NULL);
-				printf("# Closing %s (too old)\n", p->filename);
+				printf("- Closing %s (too old)\n", p->filename);
 				p=NULL; /* Can't use this anymore */
 				hash_delete(hash, toClose[ci]);
 				cleaned++;
 			}
+		} else {
+			empty++;
 		}
 	}
 
 	if (pcap_stats(pcap_socket, &stats) == 0) {
-		printf("# Processed %d packets, dropped %d, watched=%d, cleaned=%d\n",
+		printf("# Processed %d pkts, dropped %d, watched %d, cleaned %d,"
+			" max depth %d, empty %d\n",
 		       stats.ps_recv-last_pcount,
-			   stats.ps_drop-last_dropcount, watched, cleaned);
+			   stats.ps_drop-last_dropcount, watched, cleaned, maxDepth, empty);
 		last_pcount=stats.ps_recv;
 		last_dropcount=stats.ps_drop;
 	} else {
