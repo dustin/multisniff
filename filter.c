@@ -39,7 +39,6 @@ static void     cleanup(int maxAge);
 static void     signalShutdown(int);
 static void     signalCleanup(int);
 static void     signalExpunge(int);
-static char    *itoa(int in);
 
 static void exitCleanup() {
 	hash_destroy(hash);
@@ -238,7 +237,7 @@ cleanup(int maxAge)
 }
 
 /* this is the function that's called when pcap reads a packet */
-void
+static void
 filter_packet(u_char * u, struct pcap_pkthdr * p, u_char * packet)
 {
 #define IP_SIZE  20
@@ -268,46 +267,17 @@ filter_packet(u_char * u, struct pcap_pkthdr * p, u_char * packet)
 	hash_add(hash, pcap_socket, ntohl(ip->ip_dst.s_addr), p, packet);
 }
 
-/* I rewrote this when I found that my profiler said the libc version was too
- * slow */
-static char *
-itoa(int in)
-{
-	static char     buf[16];
-	int             i = 15;
-
-	buf[i--] = 0x00;
-
-	while (in >= 10) {
-		buf[i--] = ((in % 10) + '0');
-		in /= 10;
-	}
-	buf[i--] = (in + '0');
-	/*
-	 * The beginning is calculated by the distance from i to the the
-	 * character before the end (NULL) The end is 15, so the first
-	 * available character is 14.  If the string representation of the
-	 * number is one character long, 15 is 0x00, 14 is the digit, and 13
-	 * is the current pointer.  Thus, the number should be buf + (i+1) or
-	 * i+1
-	 */
-	return (buf + i + 1);
-}
-
 char *
 ntoa(int a)
 {
 	static char     ret[40];
+	int written=0;
 
-	ret[0] = 0x00;
-	strcat(ret, itoa((a & 0xff000000) >> 24));
-	strcat(ret, ".");
-	strcat(ret, itoa((a & 0x00ff0000) >> 16));
-	strcat(ret, ".");
-	strcat(ret, itoa((a & 0x0000ff00) >> 8));
-	strcat(ret, ".");
-	strcat(ret, itoa(a & 0x000000ff));
-	assert(strlen(ret) < sizeof(ret));
+	written=snprintf(ret, sizeof(ret)-1, "%d.%d.%d.%d",
+		((a & 0xff000000) >> 24), ((a & 0x00ff0000) >> 16),
+		((a & 0x0000ff00) >> 8), (a & 0x000000ff));
+
+	assert(written < sizeof(ret));
 
 	return(ret);
 }
