@@ -303,7 +303,6 @@ filter_packet(u_char * u, struct pcap_pkthdr * p, u_char * packet)
 #define IP_SIZE  20
 #define TCP_SIZE 20
 
-	unsigned short  ip_options = 0;
 	struct ip      *ip;
 	struct ether_header *eth;
 
@@ -318,14 +317,6 @@ filter_packet(u_char * u, struct pcap_pkthdr * p, u_char * packet)
 
 		/* cast an ip pointer */
 		ip = (struct ip *) (packet + dlt_len);
-
-		/* determine length of ip options (usually 0) */
-		ip_options = ip->ip_hl;
-		ip_options -= 5;
-		ip_options *= 4;
-
-		/* nuke any flags in the offset field */
-		ip->ip_off &= 0xFF9F;
 
 		hash_add(hash, pcap_socket, ntohl(ip->ip_src.s_addr), p, packet);
 		hash_add(hash, pcap_socket, ntohl(ip->ip_dst.s_addr), p, packet);
