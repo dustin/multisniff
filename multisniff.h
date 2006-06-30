@@ -8,6 +8,7 @@
 
 #define FLAG_BIT(a)	(1<<a)
 #define FLAG_PROMISC 0
+#define FLAG_FLUSH 1
 
 #define DEFAULT_CLEANUP_INTERVAL 5
 

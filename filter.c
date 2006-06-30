@@ -35,7 +35,7 @@ static int shouldCleanup=0;
 static int shuttingDown=0;
 
 static void     filter_packet(u_char *, struct pcap_pkthdr *, u_char *);
-static void     cleanup(int maxAge);
+static void     cleanup(int shouldFlush, int maxAge);
 static void     signalShutdown(int);
 static void     signalCleanup(int);
 static void     signalExpunge(int);
@@ -212,12 +212,12 @@ process(int flags, const char *intf, struct cleanupConfig conf,
 	}
 
 	while (!shuttingDown) {
-		pcap_loop(pcap_socket, 65535, (pcap_handler)filter_packet, NULL);
+		pcap_dispatch(pcap_socket, -1, (pcap_handler)filter_packet, NULL);
 		if(shouldExpunge) {
 			expunge();
 		}
 		if(shouldCleanup) {
-			cleanup(conf.maxAge);
+			cleanup(flags & FLAG_BIT(FLAG_FLUSH), conf.maxAge);
 		}
 	}
 
@@ -225,7 +225,7 @@ process(int flags, const char *intf, struct cleanupConfig conf,
 }
 
 static void
-cleanup(int maxAge)
+cleanup(int shouldFlush, int maxAge)
 {
 	static unsigned int last_pcount=0, last_dropcount=0, relative_counts=0;
 	struct pcap_stat stats;
@@ -249,7 +249,11 @@ cleanup(int maxAge)
 			for(; p; p=p->next) {
 				depth++;
 				maxDepth=depth > maxDepth ? depth : maxDepth;
-				pcap_dump_flush(p->pcap_dumper);
+				#ifdef HAVE_PCAP_DUMP_FLUSH
+				if(shouldFlush) {
+					pcap_dump_flush(p->pcap_dumper);
+				}
+				#endif
 				watched++;
 				if(p->last_addition.tv_sec + maxAge < now.tv_sec) {
 					toClose[closeOffset++]=p->key;
@@ -270,9 +274,11 @@ cleanup(int maxAge)
 		}
 	}
 
-	if(misc_packets != NULL) {
+	#ifdef HAVE_PCAP_DUMP_FLUSH
+	if(shouldFlush && misc_packets != NULL) {
 		pcap_dump_flush(misc_packets);
 	}
+	#endif
 
 	if (pcap_stats(pcap_socket, &stats) == 0) {
 		int processed=stats.ps_recv-last_pcount;
@@ -352,19 +358,16 @@ static void
 signalShutdown(int s)
 {
 	shuttingDown=1;
-	pcap_breakloop(pcap_socket);
 }
 
 static void
 signalExpunge(int s)
 {
 	shouldExpunge=1;
-	pcap_breakloop(pcap_socket);
 }
 
 static void
 signalCleanup(int s)
 {
 	shouldCleanup=1;
-	pcap_breakloop(pcap_socket);
 }

@@ -18,12 +18,19 @@
 void
 usage(char *name)
 {
-	fprintf(stderr, "Usage:  %s -i <intf> [-p] [-d <outdir>] "
+	fprintf(stderr, "Usage:  %s -i <intf> "
+	#ifdef HAVE_PCAP_DUMP_FLUSH
+	"[-f] "
+	#endif
+	"[-p] [-d <outdir>] "
 		"[-m seconds] [-c seconds] [-F <filterfile>] [<filter>]\n",
 		name);
 	fprintf(stderr, "    -i specifies the interface to sniff (required).\n");
 	fprintf(stderr, "    -d specifies the output directory.\n");
-	fprintf(stderr, "    -F get a filter from a file.\n");
+	#ifdef HAVE_PCAP_DUMP_FLUSH
+		fprintf(stderr, "    -F get a filter from a file.\n");
+	#endif
+	fprintf(stderr, "    -f flush pcap files on each cleanup run.\n");
 	fprintf(stderr, "    -p turns on promiscious sniffing.\n");
 	fprintf(stderr, "    -m maximum age before closing file [60s].\n");
 	fprintf(stderr, "    -c status update/flush frequency [5s].\n");
@@ -76,8 +83,11 @@ main(int argc, char **argv)
 	conf.maxAge=DEFAULT_MAX_PKT_AGE;
 	conf.refreshTime=DEFAULT_CLEANUP_INTERVAL;
 
-	while ((c = getopt(argc, argv, "pi:d:F:m:c:")) != -1) {
+	while ((c = getopt(argc, argv, "fpi:d:F:m:c:")) != -1) {
 		switch (c) {
+		case 'f':
+			flags |= FLAG_BIT(FLAG_FLUSH);
+			break;
 		case 'p':
 			flags |= FLAG_BIT(FLAG_PROMISC);
 			break;

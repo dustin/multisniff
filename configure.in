@@ -4,8 +4,7 @@ AC_INIT(main.c)
 dnl Checks for programs.
 
 dnl Checks for libraries.
-dnl Replace `main' with a function in -lpcap:
-AC_CHECK_LIB(pcap, main)
+AC_CHECK_LIB(pcap, pcap_open_live)
 
 dnl Checks for header files.
 AC_HEADER_STDC
@@ -17,5 +16,7 @@ AC_TYPE_SIZE_T
 
 dnl Checks for library functions.
 AC_TYPE_SIGNAL
+
+AC_CHECK_FUNCS(pcap_dump_flush)
 
 AC_OUTPUT(Makefile)
