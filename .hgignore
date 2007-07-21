@@ -1,7 +1,5 @@
-(^|/)\{arch\}($|/)
-(^|/)\.hg($|/)
-(^|/)\.hgtags($|/)
-^multisniff.log$
-^multisniff.state$
-^multisniff.state.old$
-^multisniff.state.journal$
+^Makefile$
+^config.log$
+^config.status$
+^multisniff$
+.*\.o$
