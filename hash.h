@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2006  Dustin Sallings
- * arch-tag: 9EFE55BA-45D2-4120-8DB6-AE44005755C0
  */
 
 #ifndef HASH_H

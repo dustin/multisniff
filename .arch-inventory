@@ -1,3 +1,0 @@
-# arch-tag: 1365B348-FD12-4B65-B564-AA4993F1EA2F
-
-precious ^(config.status|config.cache|config.log|Makefile)$

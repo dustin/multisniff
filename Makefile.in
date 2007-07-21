@@ -1,5 +1,4 @@
 # Copyright (c) 2006  Dustin Sallings <dustin@spy.net>
-# arch-tag: 64360D75-9824-4AA8-B32B-7CE195F26C44
 
 CFLAGS=-O2 -Wall -Werror @DEFS@ @CPPFLAGS@ @CFLAGS@ -I/usr/local/include
 LIBS=@LDFLAGS@ @LIBS@
