@@ -1,0 +1,7 @@
+(^|/)\{arch\}($|/)
+(^|/)\.hg($|/)
+(^|/)\.hgtags($|/)
+^multisniff.log$
+^multisniff.state$
+^multisniff.state.old$
+^multisniff.state.journal$
