@@ -1,5 +1,5 @@
-^Makefile$
+^\.sconf_temp/
+^\.sconsign\.dblite
 ^config.log$
-^config.status$
 ^multisniff$
 .*\.o$
