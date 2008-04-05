@@ -1,5 +1,0 @@
-^\.sconf_temp/
-^\.sconsign\.dblite
-^config.log$
-^multisniff$
-.*\.o$
