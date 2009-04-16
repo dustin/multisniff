@@ -239,6 +239,8 @@ cleanup(int shouldFlush, int maxAge)
 	int i=0, watched=0, cleaned=0, maxDepth=0, empty=0;
 	struct timeval now;
 
+    shouldCleanup = 0;
+
 	if(gettimeofday(&now, NULL) < 0) {
 		perror("gettimeofday");
 		exit(1);
