@@ -215,7 +215,10 @@ process(int flags, const char *intf, struct cleanupConfig conf,
 	}
 
 	while (!shuttingDown) {
-		pcap_dispatch(pcap_socket, -1, (pcap_handler)filter_packet, NULL);
+		int r = pcap_dispatch(pcap_socket, -1, (pcap_handler)filter_packet, NULL);
+        if (r < 1) {
+            shuttingDown = 1;
+        }
 		if(shouldExpunge) {
 			expunge();
 		}
