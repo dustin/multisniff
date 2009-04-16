@@ -23,7 +23,7 @@ hash_init(int size)
 	assert(size > 0);
 
 	hash = calloc(1, sizeof(struct hashtable)
-		+ (size * sizeof(struct hash_container *)));
+                  + (size * sizeof(struct hash_container *)));
 	assert(hash);
 
 	hash->hashsize = size;
@@ -50,17 +50,17 @@ hash_store(struct hashtable *hash, pcap_t *pcap_thing, unsigned int key)
 	c->filename=calloc(1, FILENAME_MAXLEN);
 	strftime(time_buf, sizeof(time_buf), "%Y%m%d-%H%M%S", localtime(&now));
 	if(snprintf(c->filename, FILENAME_MAXLEN, "%s_%s.pcap",
-		time_buf, ntoa(key)) >= FILENAME_MAXLEN) {
+                time_buf, ntoa(key)) >= FILENAME_MAXLEN) {
 		fprintf(stderr,
-			"Warning:  Not enough space for full filename, using %s\n",
-			c->filename);
+                "Warning:  Not enough space for full filename, using %s\n",
+                c->filename);
 	}
 	assert(strlen(c->filename) < FILENAME_MAXLEN);
 
 	c->pcap_dumper = pcap_dump_open(pcap_thing, c->filename);
 	if(c->pcap_dumper == NULL) {
 		fprintf(stderr, "Error opening dump file %s: %s\n", c->filename,
-			pcap_geterr(pcap_thing));
+                pcap_geterr(pcap_thing));
 		exit(1);
 	}
 	if(gettimeofday(&c->last_addition, NULL) < 0) {
@@ -79,7 +79,7 @@ hash_store(struct hashtable *hash, pcap_t *pcap_thing, unsigned int key)
 }
 
 struct hash_container *hash_add(struct hashtable *hash, pcap_t *pcap_thing,
-    unsigned int key, struct pcap_pkthdr *h, u_char *sp)
+                                unsigned int key, struct pcap_pkthdr *h, u_char *sp)
 {
 	struct hash_container *c;
 
@@ -179,45 +179,45 @@ struct hash_keylist hash_keys(struct hashtable *hash)
 	list.entries= (int *) malloc(size * sizeof(int));
 	assert(list.entries);
 
-#define LAPPEND(a) if(list.nentries == size-1) { \
+#define LAPPEND(a) if(list.nentries == size-1) {                    \
         list.entries=realloc(list.entries, (size<<=1)*sizeof(int)); \
-            assert(list.entries); \
-    } \
+        assert(list.entries);                                       \
+    }                                                               \
     list.entries[list.nentries++]=a;
 
-	for (i = 0; i < hash->hashsize; i++) {
-		p = hash->buckets[i];
-		if (p) {
-			for (; p; p = p->next) {
-				LAPPEND(p->key);
-			}
-		}
-	}
-	return (list);
+    for (i = 0; i < hash->hashsize; i++) {
+        p = hash->buckets[i];
+        if (p) {
+            for (; p; p = p->next) {
+                LAPPEND(p->key);
+            }
+        }
+    }
+    return (list);
 }
 
 /* debug stuff, dump the hash */
 void
 _hash_dump(struct hashtable *hash)
 {
-	struct hash_container *p;
-	int     i;
+    struct hash_container *p;
+    int     i;
 
-	printf("Hash dump for hash at %p, size is %d:\n", hash, hash->hashsize);
+    printf("Hash dump for hash at %p, size is %d:\n", hash, hash->hashsize);
 
-	for (i = 0; i < hash->hashsize; i++) {
-		p = hash->buckets[i];
-		if (p) {
-			printf("\tMatches at %d\n", i);
-			for (; p; p = p->next) {
+    for (i = 0; i < hash->hashsize; i++) {
+        p = hash->buckets[i];
+        if (p) {
+            printf("\tMatches at %d\n", i);
+            for (; p; p = p->next) {
 #ifdef MYMALLOC
-				if (_lookup_mem(p) == NULL) {
-					printf("MEMORY IS INVALID!!! (%p)\n", p);
-					_mdebug_dump();
-				}
+                if (_lookup_mem(p) == NULL) {
+                    printf("MEMORY IS INVALID!!! (%p)\n", p);
+                    _mdebug_dump();
+                }
 #endif
-				printf("\t\t%s -> d=%p\n", ntoa(p->key), p->pcap_dumper);
-			}
-		}
-	}
+                printf("\t\t%s -> d=%p\n", ntoa(p->key), p->pcap_dumper);
+            }
+        }
+    }
 }

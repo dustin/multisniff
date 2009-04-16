@@ -9,7 +9,7 @@
 #include <ctype.h>
 #include <assert.h>
 /*
-#include <getopt.h>
+  #include <getopt.h>
 */
 #include "mymalloc.h"
 #include "multisniff.h"
@@ -18,17 +18,17 @@ void
 usage(char *name)
 {
 	fprintf(stderr, "Usage:  %s -i <intf> "
-	#ifdef HAVE_PCAP_DUMP_FLUSH
-	"[-f] "
-	#endif
-	"[-p] [-d <outdir>] "
-		"[-m seconds] [-c seconds] [-F <filterfile>] [<filter>]\n",
-		name);
+#ifdef HAVE_PCAP_DUMP_FLUSH
+            "[-f] "
+#endif
+            "[-p] [-d <outdir>] "
+            "[-m seconds] [-c seconds] [-F <filterfile>] [<filter>]\n",
+            name);
 	fprintf(stderr, "    -i specifies the interface to sniff (required).\n");
 	fprintf(stderr, "    -d specifies the output directory.\n");
-	#ifdef HAVE_PCAP_DUMP_FLUSH
-		fprintf(stderr, "    -F get a filter from a file.\n");
-	#endif
+#ifdef HAVE_PCAP_DUMP_FLUSH
+    fprintf(stderr, "    -F get a filter from a file.\n");
+#endif
 	fprintf(stderr, "    -f flush pcap files on each cleanup run.\n");
 	fprintf(stderr, "    -p turns on promiscious sniffing.\n");
 	fprintf(stderr, "    -m maximum age before closing file [60s].\n");
@@ -112,34 +112,34 @@ main(int argc, char **argv)
 		}
 	}
 
-	if (optind >= argc) {
-		if(filter == NULL) {
-			filter = "";
-		}
-	} else {
-		int i=0;
-		int size=0;
-		for(i=optind; i<argc; i++) {
-			size+=strlen(argv[i]);
-			size+=1;
-		}
-		size+=1;
-		filter=calloc(1, size);
-		assert(filter);
-		for(i=optind; i<argc; i++) {
-			strcat(filter, argv[i]);
-			strcat(filter, " ");
-			assert(strlen(filter) < size);
-		}
-		/* Trim the trailing space */
-		assert(filter[strlen(filter)-1] == ' ');
-		filter[strlen(filter)-1]=0x00;
-	}
+    if (optind >= argc) {
+        if(filter == NULL) {
+            filter = "";
+        }
+    } else {
+        int i=0;
+        int size=0;
+        for(i=optind; i<argc; i++) {
+            size+=strlen(argv[i]);
+            size+=1;
+        }
+        size+=1;
+        filter=calloc(1, size);
+        assert(filter);
+        for(i=optind; i<argc; i++) {
+            strcat(filter, argv[i]);
+            strcat(filter, " ");
+            assert(strlen(filter) < size);
+        }
+        /* Trim the trailing space */
+        assert(filter[strlen(filter)-1] == ' ');
+        filter[strlen(filter)-1]=0x00;
+    }
 
-	if (intf == NULL) {
-		fprintf(stderr, "Must supply an interface\n");
-		usage(argv[0]);
-	}
-	process(flags, intf, conf, outdir, filter);
-	return (0);
+    if (intf == NULL) {
+        fprintf(stderr, "Must supply an interface\n");
+        usage(argv[0]);
+    }
+    process(flags, intf, conf, outdir, filter);
+    return (0);
 }
