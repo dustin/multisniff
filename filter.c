@@ -165,7 +165,11 @@ process(int flags, const char *intf, struct cleanupConfig conf,
 		flagdef = 0;
 	}
 
-	pcap_socket = pcap_open_live(intf, 65535, flagdef, 1000, errbuf);
+    if (intf[0] == '/') {
+        pcap_socket = pcap_open_offline(intf, errbuf);
+    } else {
+        pcap_socket = pcap_open_live(intf, 65535, flagdef, 1000, errbuf);
+    }
 
 	if (pcap_socket == NULL) {
 		fprintf(stderr, "pcap_open_live: %s\n", errbuf);
